@@ -1,15 +1,13 @@
-from typing import List, Union
+from typing import List, Union, Any
 from pathlib import Path
 import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
-from pytorch_lightning.utilities.cloud_io import load as pl_load
+from torch import load as pl_load
 from pytorch_lightning.utilities.migration import pl_legacy_patch
-from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from torchmetrics import AUROC, Accuracy
-
 
 class VeryBasicModel(pl.LightningModule):
     """
@@ -36,7 +34,7 @@ class VeryBasicModel(pl.LightningModule):
         """Step function for training, validation, and testing. Must be implemented by subclasses."""
         raise NotImplementedError
 
-    def _epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]], state: str):
+    def _epoch_end(self, outputs: Union[Any, List[Any]], state: str):
         """Epoch end function."""
         return
 
@@ -52,15 +50,15 @@ class VeryBasicModel(pl.LightningModule):
         self._step_test += 1
         return self._step(batch, batch_idx, "test", self._step_test, optimizer_idx)
 
-    def training_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
+    def training_epoch_end(self, outputs: Union[Any, List[Any]]) -> None:
         self._epoch_end(outputs, "train")
         return super().training_epoch_end(outputs)
 
-    def validation_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
+    def validation_epoch_end(self, outputs: Union[Any, List[Any]]) -> None:
         self._epoch_end(outputs, "val")
         return super().validation_epoch_end(outputs)
 
-    def test_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
+    def test_epoch_end(self, outputs: Union[Any, List[Any]]) -> None:
         self._epoch_end(outputs, "test")
         return super().test_epoch_end(outputs)
 
@@ -254,16 +252,12 @@ class BasicClassifier(BasicModel):
                 self.log(f"{state}/{metric_name}", metric_val.cpu() if hasattr(metric_val, 'cpu') else metric_val,
                          batch_size=batch_size, on_step=True, on_epoch=True)
 
+            # Log the calculated metrics (Accuracy and AUROC)
+            self.log(f"{state}/ACC", self.acc[state + "_"].compute().cpu(), batch_size=batch_size, on_step=False, on_epoch=True)
+            self.log(f"{state}/AUC_ROC", self.auc_roc[state + "_"].compute().cpu(), batch_size=batch_size, on_step=False, on_epoch=True)
+
+            # Reset the metrics for the next epoch
+            self.acc[state + "_"].reset()
+            self.auc_roc[state + "_"].reset()
+
         return logging_dict['loss']
-
-    def _epoch_end(self, outputs, state):
-        """Epoch end function.
-
-        Args:
-            outputs (Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]): Outputs of the epoch.
-            state (str): State of the model ('train', 'val', 'test').
-        """
-        batch_size = len(outputs)
-        for name, value in [("ACC", self.acc[state + "_"]), ("AUC_ROC", self.auc_roc[state + "_"])]:
-            self.log(f"{state}/{name}", value.compute().cpu(), batch_size=batch_size, on_step=False, on_epoch=True)
-            value.reset()
