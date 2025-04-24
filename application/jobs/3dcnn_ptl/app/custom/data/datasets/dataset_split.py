@@ -3,25 +3,21 @@ import shutil
 import pandas as pd
 import numpy as np
 
-
 image_dir = r"C:\Users\bracke\Documents\all"
-excel_path = r"C:\Users\bracke\Documents\Clinical_and_Other_Features.xlsx"
+excel_path = r"C:\Users\bracke\Documents\all_split\Clinical_and_Other_Features.xlsx"
 output_base = r"C:\Users\bracke\Documents\all_split"
-
 
 hospital_1 = os.path.join(output_base, "Krankenhaus_1")  # M2
 hospital_2 = os.path.join(output_base, "Krankenhaus_2")  # M0.1
 hospital_3 = os.path.join(output_base, "Krankenhaus_3")  # M0.2
 
-
+# Erstelle Zielordner, wenn sie noch nicht existieren
 for hospital in [hospital_1, hospital_2, hospital_3]:
     os.makedirs(hospital, exist_ok=True)
-
 
 df = pd.read_excel(excel_path, header=1)  
 df = df[["Patient ID", "Manufacturer", "Bilateral Information", "Tumor Location"]]
 df.dropna(subset=["Patient ID", "Manufacturer"], inplace=True)
-
 
 df["Patient ID"] = df["Patient ID"].astype(str).str.strip()  
 df["Manufacturer"] = df["Manufacturer"].astype(int)
@@ -62,18 +58,14 @@ df.loc[df["Patient ID"].isin(right_cancer_split["Patient ID"]), "Target Hospital
 
 # Krankenhaus 3: Patienten ohne Krebs und die andere Hälfte der einseitigen Krebsfälle
 no_cancer = df[(df["Bilateral Information"] == "NC") & (df["Manufacturer"] == 0)]
-
-# no_cancer = df[df["Tumor Location"] == "NC"]  
 remaining_left_cancer_cases = left_cancer_cases.drop(left_cancer_split.index)  
 remaining_right_cancer_cases = right_cancer_cases.drop(right_cancer_split.index) 
-
-print(len(remaining_left_cancer_cases), len(remaining_right_cancer_cases))
 
 df.loc[df["Patient ID"].isin(no_cancer["Patient ID"]), "Target Hospital"] = hospital_3
 df.loc[df["Patient ID"].isin(remaining_left_cancer_cases["Patient ID"]), "Target Hospital"] = hospital_3
 df.loc[df["Patient ID"].isin(remaining_right_cancer_cases["Patient ID"]), "Target Hospital"] = hospital_3
 
-
+# Kopieren der Bilddateien unter Beibehaltung der Ordnerstruktur
 for _, row in df.iterrows():
     patient_id = row["Patient ID"]
     target_dir = row["Target Hospital"]
@@ -82,7 +74,7 @@ for _, row in df.iterrows():
         print(f"Kein Zielkrankenhaus für Patient {patient_id} definiert. Überspringe")
         continue
 
-    matching_folders = [f for f in os.listdir(image_dir) if f.startswith(patient_id)]
+    matching_folders = [f for f in os.listdir(image_dir) if f.startswith(patient_id[-3:])]
     if not matching_folders:
         print(f"Kein Ordner für Patient {patient_id} gefunden. Überspringe")
         continue
@@ -94,11 +86,14 @@ for _, row in df.iterrows():
             print(f"Bild fehlt in {folder_path}. Überspringe")
             continue
 
-        new_filename = f"{folder_name}.nii.gz"
-        dest_file = os.path.join(target_dir, new_filename)
+        # Erstelle das Zielverzeichnis im Zielkrankenhaus (behalte die ursprüngliche Ordnerstruktur bei)
+        patient_subfolder = os.path.join(target_dir, folder_name)
+        os.makedirs(patient_subfolder, exist_ok=True)
 
+        dest_file = os.path.join(patient_subfolder, "sub.nii.gz")
+        
         if os.path.exists(dest_file):
-            print(f"Bild {new_filename} existiert bereits in {target_dir}. Überspringe")
+            print(f"Bild {dest_file} existiert bereits. Überspringe")
             continue
 
         shutil.copy(src_file, dest_file)
@@ -106,4 +101,9 @@ for _, row in df.iterrows():
 
 print("Verteilung abgeschlossen")
 
-
+h1 = df[df["Target Hospital"] == hospital_1].count()
+h2 = df[df["Target Hospital"] == hospital_2].count()
+h3 = df[df["Target Hospital"] == hospital_3].count()
+print(f"Target Hospital 1:{h1}")
+print(f"Target Hospital 2:{h2}")
+print(f"Target Hospital 3:{h3}")
