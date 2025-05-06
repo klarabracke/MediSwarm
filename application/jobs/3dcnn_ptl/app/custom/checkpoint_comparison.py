@@ -61,13 +61,13 @@ class ResNet503DFeatureExtractor:
 
 def load_nifti_image_as_tensor(path, device):
     img = nib.load(path).get_fdata()
-    img = np.expand_dims(img, axis=0)  # Add channel dimension
-    img = np.expand_dims(img, axis=0)  # Add batch dimension
+    img = np.expand_dims(img, axis=0)  
+    img = np.expand_dims(img, axis=0)  
     img_tensor = torch.tensor(img, dtype=torch.float32).to(device)
     return img_tensor
 
 
-# === Konfiguration ===
+
 checkpoint_paths = {
     "Krankenhaus_1": r"C:\Users\bracke\Documents\all_split\scratch_K_1\2025_04_24_144120_DUKE_ResNet50_swarm_learning\last.ckpt",
     "Krankenhaus_2": r"C:\Users\bracke\Documents\all_split\scratch_K_2\2025_04_24_144119_DUKE_ResNet50_swarm_learning\last.ckpt",
@@ -78,11 +78,11 @@ checkpoint_paths = {
 
 image_path = r"C:/Users/bracke/Documents/all_split/Krankenhaus_1/001_left/sub.nii.gz"
 
-# === Bild laden ===
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 input_tensor = load_nifti_image_as_tensor(image_path, device)
 
-# === Modelle initialisieren und vergleichen ===
+
 features = {}
 for name, path in checkpoint_paths.items():
     print(f"\nVerarbeite {name} ...")
@@ -91,7 +91,7 @@ for name, path in checkpoint_paths.items():
     features[name] = feat.cpu().numpy()
     print(f"{name} Feature-Vektor-Shape: {feat.shape}")
 
-# === Optional: Ähnlichkeiten vergleichen ===
+
 from sklearn.metrics.pairwise import cosine_similarity
 
 print("\n Cosine Similarities:")

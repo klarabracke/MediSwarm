@@ -1,48 +1,65 @@
 #!/usr/bin/env python3
 
+import sys
 import os
+import logging
+
+# Setze den Pfad zum übergeordneten Verzeichnis, damit Module korrekt importiert werden
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
 
 import nvflare.client.lightning as flare
 import nvflare.client as flare_util
 import torch
+import threedcnn_ptl
 
-import minimal_training
+# Definiere die Trainingsmodi
+TRAINING_MODE = os.getenv("TRAINING_MODE", "local_training") 
+TM_PREFLIGHT_CHECK = "preflight_check"
+TM_LOCAL_TRAINING = "local_training"
+TM_SWARM = "swarm"
 
-TRAINING_MODE = os.getenv("TRAINING_MODE")
-
-if TRAINING_MODE == "swarm":
+# Überprüfe den Trainingsmodus
+if TRAINING_MODE == TM_SWARM:
     flare_util.init()
-    SITE_NAME=flare.get_site_name()
-elif TRAINING_MODE == "local_training":
-    SITE_NAME="site_name_unset"
+    SITE_NAME = flare.get_site_name()
+    NUM_EPOCHS = threedcnn_ptl.get_num_epochs_per_round(SITE_NAME)
+elif TRAINING_MODE in [TM_PREFLIGHT_CHECK, TM_LOCAL_TRAINING]:
+    SITE_NAME = os.getenv("SITE_NAME", "default_site")  
+    NUM_EPOCHS = int(os.getenv("NUM_EPOCHS", 10))  
 else:
     raise Exception(f"Illegal TRAINING_MODE {TRAINING_MODE}")
-
 
 def main():
     """
     Main function for training and evaluating the model using NVFlare and PyTorch Lightning.
     """
-    logger = minimal_training.set_up_logging()
-    try:
-        data_module, model, checkpointing, trainer = minimal_training.prepare_training(logger)
+    # Logger einrichten
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(level=logging.INFO)
 
-        if TRAINING_MODE == "swarm":
-            flare.patch(trainer)  # Patch trainer to enable swarm learning
+    # Überprüfe und bereite das Training vor
+    try:
+        data_module, model, checkpointing, trainer, path_run_dir, env_vars = threedcnn_ptl.prepare_training(logger, NUM_EPOCHS, SITE_NAME)
+
+        if TRAINING_MODE == TM_SWARM:
+            flare.patch(trainer)  # Trainer patchen, um Swarm-Lernen zu ermöglichen
             torch.autograd.set_detect_anomaly(True)
 
             logger.info(f"Site name: {SITE_NAME}")
 
+            # Swarm Training Loop
             while flare.is_running():
                 input_model = flare.receive()
                 logger.info(f"Current round: {input_model.current_round}")
 
-                minimal_training.validate_and_train(logger, data_module, model, trainer)
+                threedcnn_ptl.validate_and_train(logger, data_module, model, trainer)
 
-        elif TRAINING_MODE == "preflight_check" or TRAINING_MODE == "local_training":
-            minimal_training.validate_and_train(logger, data_module, model, trainer)
+        elif TRAINING_MODE in [TM_PREFLIGHT_CHECK, TM_LOCAL_TRAINING]:
+            threedcnn_ptl.validate_and_train(logger, data_module, model, trainer)
 
-        minimal_training.finalize_training(logger, model, checkpointing, trainer)
+        if TRAINING_MODE in [TM_LOCAL_TRAINING, TM_SWARM]:
+            threedcnn_ptl.finalize_training(logger, model, checkpointing, trainer, path_run_dir, env_vars)
+
     except Exception as e:
         logger.error(f"Error in main function: {e}")
         raise
