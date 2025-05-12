@@ -7,6 +7,7 @@ import pytorch_lightning as pl_load
 import pytorch_lightning as pl
 
 from pytorch_lightning.utilities import pl_legacy_patch
+from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from torchmetrics import AUROC, Accuracy
 from collections import Counter
 import numpy as np
