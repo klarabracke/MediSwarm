@@ -15,13 +15,14 @@ import logging
 
 def get_num_epochs_per_round(site_name: str) -> int:
     #TODO: Set max_epochs based on the data set size
-    NUM_EPOCHS_FOR_SITE = { "TUD_1":   2,
-                            "TUD_2":   4,
-                            "TUD_3":   8,
-                            "MEVIS_1": 2,
-                            "MEVIS_2": 4,
-                            "UKA":     2,
-                           }
+    NUM_EPOCHS_FOR_SITE = {
+        "TUD_1": 2,
+        "TUD_2": 4,
+        "TUD_3": 8,
+        "MEVIS_1": 2,
+        "MEVIS_2": 4,
+        "UKA": 2,
+    }
 
     if site_name in NUM_EPOCHS_FOR_SITE.keys():
         MAX_EPOCHS = NUM_EPOCHS_FOR_SITE[site_name]
@@ -102,13 +103,12 @@ def prepare_training(logger, max_epochs:int , site_name: str):
 
         data_module = set_up_data_module(env_vars, logger, site_name)
 
-        # max_epochs = env_vars['max_epochs']
-        # cal_max_epochs = cal_max_epochs(max_epochs, cal_weightage(train_size))
-        # logger.info(f"Max epochs set to: {cal_max_epochs}")
-
-        # Initialize the model
         model_name = env_vars['model_name']
         model = select_model(model_name)
+
+    
+        model.client_id = 0  
+    
         logger.info(f"Using model: {model_name}")
 
         to_monitor = "val/AUC_ROC"
