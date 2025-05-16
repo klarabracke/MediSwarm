@@ -7,6 +7,8 @@ import torch
 import models.base_model
 
 
+from models.base_model import set_up_logging  
+
 TRAINING_MODE = os.getenv("TRAINING_MODE")
 
 if TRAINING_MODE == "swarm":
@@ -22,12 +24,12 @@ def main():
     """
     Main function for training and evaluating the model using NVFlare and PyTorch Lightning.
     """
-    logger = models.base_model.set_up_logging()
+    logger = set_up_logging()  
     try:
         data_module, model, checkpointing, trainer = models.base_model.prepare_training(logger)
 
         if TRAINING_MODE == "swarm":
-            flare.patch(trainer)  # Patch trainer to enable swarm learning
+            flare.patch(trainer)  
             torch.autograd.set_detect_anomaly(True)
 
             logger.info(f"Site name: {SITE_NAME}")
