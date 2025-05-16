@@ -5,9 +5,7 @@ import nvflare.client as flare_util
 import torch
 
 import models.base_model
-
-
-from models.base_model import set_up_logging  
+from minimal_training import set_up_logging  
 
 TRAINING_MODE = os.getenv("TRAINING_MODE")
 
