@@ -220,7 +220,7 @@ class BasicClassifier(BasicModel):
         self.acc = nn.ModuleDict({state: Accuracy(**acc_kwargs) for state in ["train_", "val_", "test_"]})
 
         self.fedlc_tau = 0.1  # Tau-Wert für die kalibrierte Lossfunktion
-        self.clients_label_counts = None  # Label-Zähler für die kalibrierte Lossfunktion
+        self.clients_label_counts = {self.client_id: 0} 
 
     def _step(self, batch: dict, batch_idx: int, state: str, step: int, optimizer_idx: int):
         """Step function for training, validation, and testing.
