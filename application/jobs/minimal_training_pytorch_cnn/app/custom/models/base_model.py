@@ -219,6 +219,9 @@ class BasicClassifier(BasicModel):
         self.auc_roc = nn.ModuleDict({state: AUROC(**aucroc_kwargs) for state in ["train_", "val_", "test_"]})
         self.acc = nn.ModuleDict({state: Accuracy(**acc_kwargs) for state in ["train_", "val_", "test_"]})
 
+        self.fedlc_tau = 0.1  # Tau-Wert für die kalibrierte Lossfunktion
+        self.clients_label_counts = None  # Label-Zähler für die kalibrierte Lossfunktion
+
     def _step(self, batch: dict, batch_idx: int, state: str, step: int, optimizer_idx: int):
         """Step function for training, validation, and testing.
 
@@ -253,7 +256,19 @@ class BasicClassifier(BasicModel):
                 self.log(f"{state}/{metric_name}", metric_val.cpu() if hasattr(metric_val, 'cpu') else metric_val,
                          batch_size=batch_size, on_step=True, on_epoch=True)
 
-        return logging_dict['loss']
+        # Berechne die kalibrierte Lossfunktion
+        cal_logit = torch.exp(
+            self.logit
+            - (
+                self.fedlc_tau
+                * torch.pow(self.clients_label_counts[self.client_id], -1 / 4)
+                .unsqueeze(0)
+                .expand((self.logit.shape[0], -1))
+            )
+        )
+        y_logit = torch.gather(cal_logit, dim=-1, index=y.unsqueeze(1))
+        loss = -torch.log(y_logit / cal_logit.sum(dim=-1, keepdim=True))
+        return loss.sum() / self.logit.shape[0]
 
     def _epoch_end(self, outputs, state):
         """Epoch end function.
