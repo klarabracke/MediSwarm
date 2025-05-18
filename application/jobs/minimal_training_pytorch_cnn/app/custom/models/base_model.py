@@ -117,7 +117,7 @@ class BasicClassifier(BasicModel):
             in_ch: int,
             out_ch: int,
             spatial_dims: int,
-            loss=torch.nn.BCEWithLogitsLoss,   # (default für binary!)
+            loss=torch.nn.BCEWithLogitsLoss,   # Empfohlen für Binary!
             loss_kwargs={},
             optimizer=torch.optim.AdamW,
             optimizer_kwargs={'lr': 1e-3, 'weight_decay': 1e-2},
@@ -136,14 +136,14 @@ class BasicClassifier(BasicModel):
             self.loss = loss
         self.loss_kwargs = loss_kwargs
 
-        # Für Binary: threshold=0 (logit), AUROC nimmt probability.
+    
         self.auc_roc = nn.ModuleDict({state: AUROC(**aucroc_kwargs) for state in ["train_", "val_", "test_"]})
         self.acc = nn.ModuleDict({state: Accuracy(**acc_kwargs) for state in ["train_", "val_", "test_"]})
 
     def _step(self, batch: dict, batch_idx: int, state: str, step: int, optimizer_idx: int):
         source, target = batch['source'], batch['target']
 
-        # Für Loss (z.B. BCEWithLogits): [B,1] und float
+        
         target_for_loss = target.float().view(-1, 1)
         batch_size = source.shape[0]
         pred = self(source)
@@ -160,17 +160,15 @@ class BasicClassifier(BasicModel):
             print("[ERROR] Loss computation failed:", str(e))
             raise
 
-        # TorchMetrics: Predictions und Targets müssen [B] und long/int sein!
+    
         tm_target = target.view(-1).long()
-        tm_pred = pred.view(-1)
-        tm_pred_prob = torch.sigmoid(pred.view(-1))
+        tm_pred = pred.view(-1).float()            
+        tm_pred_prob = torch.sigmoid(tm_pred)    
 
         with torch.no_grad():
             try:
                 print("  [DEBUG] Calling acc/auc_roc metrics update...")
-                # Für Accuracy: logits als Input, TorchMetrics nimmt threshold=0
                 self.acc[state + "_"].update(tm_pred, tm_target)
-                # Für AUROC: probability als Input (sigmoid)
                 self.auc_roc[state + "_"].update(tm_pred_prob, tm_target)
             except Exception as e:
                 print("[ERROR] Metric computation failed:", str(e))
