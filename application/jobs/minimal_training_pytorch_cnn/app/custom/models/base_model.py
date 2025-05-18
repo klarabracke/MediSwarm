@@ -11,15 +11,6 @@ from torchmetrics import AUROC, Accuracy
 
 
 class VeryBasicModel(pl.LightningModule):
-    """
-    A very basic model class extending LightningModule with basic functionality.
-
-    Attributes:
-        _step_train (int): Counter for training steps.
-        _step_val (int): Counter for validation steps.
-        _step_test (int): Counter for test steps.
-    """
-
     def __init__(self):
         super().__init__()
         self.save_hyperparameters()
@@ -28,15 +19,12 @@ class VeryBasicModel(pl.LightningModule):
         self._step_test = -1
 
     def forward(self, x_in):
-        """Forward pass. Must be implemented by subclasses."""
         raise NotImplementedError
 
     def _step(self, batch: dict, batch_idx: int, state: str, step: int, optimizer_idx: int):
-        """Step function for training, validation, and testing. Must be implemented by subclasses."""
         raise NotImplementedError
 
     def _epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]], state: str):
-        """Epoch end function."""
         return
 
     def training_step(self, batch: dict, batch_idx: int, optimizer_idx: int = 0):
@@ -65,26 +53,11 @@ class VeryBasicModel(pl.LightningModule):
 
     @classmethod
     def save_best_checkpoint(cls, path_checkpoint_dir, best_model_path):
-        """Saves the best model checkpoint path.
-
-        Args:
-            path_checkpoint_dir (str): Directory to save the checkpoint.
-            best_model_path (str): Path to the best model.
-        """
         with open(Path(path_checkpoint_dir) / 'best_checkpoint.json', 'w') as f:
             json.dump({'best_model_epoch': Path(best_model_path).name}, f)
 
     @classmethod
     def _get_best_checkpoint_path(cls, path_checkpoint_dir, version=0, **kwargs):
-        """Gets the best model checkpoint path.
-
-        Args:
-            path_checkpoint_dir (str): Directory containing the checkpoint.
-            version (int, optional): Version of the checkpoint. Defaults to 0.
-
-        Returns:
-            Path: Path to the best checkpoint.
-        """
         path_version = 'lightning_logs/version_' + str(version)
         with open(Path(path_checkpoint_dir) / path_version / 'best_checkpoint.json', 'r') as f:
             path_rel_best_checkpoint = Path(json.load(f)['best_model_epoch'])
@@ -92,31 +65,12 @@ class VeryBasicModel(pl.LightningModule):
 
     @classmethod
     def load_best_checkpoint(cls, path_checkpoint_dir, version=0, **kwargs):
-        """Loads the best model checkpoint.
-
-        Args:
-            path_checkpoint_dir (str): Directory containing the checkpoint.
-            version (int, optional): Version of the checkpoint. Defaults to 0.
-
-        Returns:
-            LightningModule: The loaded model.
-        """
         path_best_checkpoint = cls._get_best_checkpoint_path(path_checkpoint_dir, version)
         return cls.load_from_checkpoint(path_best_checkpoint, **kwargs)
 
     def load_pretrained(self, checkpoint_path, map_location=None, **kwargs):
-        """Loads pretrained weights from a checkpoint.
-
-        Args:
-            checkpoint_path (str): Path to the checkpoint.
-            map_location (str, optional): Device to map the checkpoint. Defaults to None.
-
-        Returns:
-            LightningModule: The model with loaded weights.
-        """
         if checkpoint_path.is_dir():
             checkpoint_path = self._get_best_checkpoint_path(checkpoint_path, **kwargs)
-
         with pl_legacy_patch():
             if map_location is not None:
                 checkpoint = pl_load(checkpoint_path, map_location=map_location)
@@ -125,15 +79,6 @@ class VeryBasicModel(pl.LightningModule):
         return self.load_weights(checkpoint["state_dict"], **kwargs)
 
     def load_weights(self, pretrained_weights, strict=True, **kwargs):
-        """Loads weights into the model.
-
-        Args:
-            pretrained_weights (dict): Pretrained weights.
-            strict (bool, optional): Whether to strictly enforce that the keys in `state_dict` match the keys returned by this module’s `state_dict` function. Defaults to True.
-
-        Returns:
-            LightningModule: The model with loaded weights.
-        """
         filter_fn = kwargs.get('filter', lambda key: key in pretrained_weights)
         init_weights = self.state_dict()
         pretrained_weights = {key: value for key, value in pretrained_weights.items() if filter_fn(key)}
@@ -143,16 +88,6 @@ class VeryBasicModel(pl.LightningModule):
 
 
 class BasicModel(VeryBasicModel):
-    """
-    A basic model class with optimizer and learning rate scheduler configurations.
-
-    Attributes:
-        optimizer (Optimizer): The optimizer to use.
-        optimizer_kwargs (dict): Keyword arguments for the optimizer.
-        lr_scheduler (Scheduler): The learning rate scheduler to use.
-        lr_scheduler_kwargs (dict): Keyword arguments for the learning rate scheduler.
-    """
-
     def __init__(
             self,
             optimizer=torch.optim.AdamW,
@@ -168,11 +103,6 @@ class BasicModel(VeryBasicModel):
         self.lr_scheduler_kwargs = lr_scheduler_kwargs
 
     def configure_optimizers(self):
-        """Configures the optimizers and learning rate schedulers.
-
-        Returns:
-            list: List containing the optimizer and optionally the learning rate scheduler.
-        """
         optimizer = self.optimizer(self.parameters(), **self.optimizer_kwargs)
         if self.lr_scheduler is not None:
             lr_scheduler = self.lr_scheduler(optimizer, **self.lr_scheduler_kwargs)
@@ -182,19 +112,6 @@ class BasicModel(VeryBasicModel):
 
 
 class BasicClassifier(BasicModel):
-    """
-    A basic classifier model with loss function and metrics.
-
-    Attributes:
-        in_ch (int): Number of input channels.
-        out_ch (int): Number of output channels.
-        spatial_dims (int): Number of spatial dimensions.
-        loss (Loss): The loss function.
-        loss_kwargs (dict): Keyword arguments for the loss function.
-        auc_roc (ModuleDict): Dictionary of AUROC metrics.
-        acc (ModuleDict): Dictionary of Accuracy metrics.
-    """
-
     def __init__(
             self,
             in_ch: int,
@@ -213,31 +130,16 @@ class BasicClassifier(BasicModel):
         self.in_ch = in_ch
         self.out_ch = out_ch
         self.spatial_dims = spatial_dims
-
-        # FLEXIBEL
         if isinstance(loss, type):
-            self.loss = loss(**loss_kwargs)  # Für nn.Loss-Klassen
+            self.loss = loss(**loss_kwargs)
         else:
-            self.loss = loss                # Für Funktions-Loss, z.B. logit_calibrated_loss
-
+            self.loss = loss
         self.loss_kwargs = loss_kwargs
 
         self.auc_roc = nn.ModuleDict({state: AUROC(**aucroc_kwargs) for state in ["train_", "val_", "test_"]})
         self.acc = nn.ModuleDict({state: Accuracy(**acc_kwargs) for state in ["train_", "val_", "test_"]})
 
     def _step(self, batch: dict, batch_idx: int, state: str, step: int, optimizer_idx: int):
-        """Step function for training, validation, and testing.
-
-        Args:
-            batch (dict): Input batch.
-            batch_idx (int): Batch index.
-            state (str): State of the model ('train', 'val', 'test').
-            step (int): Current step.
-            optimizer_idx (int): Index of the optimizer.
-
-        Returns:
-            Tensor: Loss value.
-        """
         source, target = batch['source'], batch['target']
         target = target[:, None].float()
         batch_size = source.shape[0]
@@ -249,9 +151,7 @@ class BasicClassifier(BasicModel):
         print(f"\n[DEBUG] State: {state}, Batch idx: {batch_idx}, Step: {step}")
         print("  pred.shape:", pred.shape, "pred.dtype:", pred.dtype, "min/max:", pred.min().item(), pred.max().item())
         print("  target.shape:", target.shape, "target.dtype:", target.dtype, "unique:", torch.unique(target))
-        # -----------------------
 
-        # Compute Loss
         logging_dict = {}
         try:
             logging_dict['loss'] = self.loss(pred, target)
@@ -259,17 +159,20 @@ class BasicClassifier(BasicModel):
             print("[ERROR] Loss computation failed:", str(e))
             raise
 
-        # Compute Metrics
+        # -------- KORREKTUR FÜR TORCHMETRICS ---------
+        # Targets/lang und shape [batch] für Accuracy/AUROC (binary)
+        tm_target = target.view(-1).long()
+        tm_pred = pred.view(-1) if pred.shape[-1] == 1 else pred
+
         with torch.no_grad():
             try:
                 print("  [DEBUG] Calling acc/auc_roc metrics update...")
-                self.acc[state + "_"].update(pred, target)
-                self.auc_roc[state + "_"].update(pred, target)
+                self.acc[state + "_"].update(tm_pred, tm_target)
+                self.auc_roc[state + "_"].update(tm_pred, tm_target)
             except Exception as e:
                 print("[ERROR] Metric computation failed:", str(e))
                 raise
 
-            # Log Scalars
             for metric_name, metric_val in logging_dict.items():
                 self.log(f"{state}/{metric_name}", metric_val.cpu() if hasattr(metric_val, 'cpu') else metric_val,
                          batch_size=batch_size, on_step=True, on_epoch=True)
@@ -277,12 +180,6 @@ class BasicClassifier(BasicModel):
         return logging_dict['loss']
 
     def _epoch_end(self, outputs, state):
-        """Epoch end function.
-
-        Args:
-            outputs (Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]): Outputs of the epoch.
-            state (str): State of the model ('train', 'val', 'test').
-        """
         batch_size = len(outputs)
         for name, value in [("ACC", self.acc[state + "_"]), ("AUC_ROC", self.auc_roc[state + "_"])]:
             self.log(f"{state}/{name}", value.compute().cpu(), batch_size=batch_size, on_step=False, on_epoch=True)
