@@ -140,19 +140,17 @@ class BasicClassifier(BasicModel):
         self.auc_roc = nn.ModuleDict({state: AUROC(**aucroc_kwargs).cpu() for state in ["train_", "val_", "test_"]})
 
     def _step(self, batch: dict, batch_idx: int, state: str, step: int, optimizer_idx: int):
-        # ALLES AUF CPU am Anfang!!!
+       
         source, target = batch['source'].cpu(), batch['target'].cpu()
 
+        # Für Loss (BCEWithLogits), [B,1] float32
         target_for_loss = target.float().view(-1, 1)
         batch_size = source.shape[0]
-        # Wieder auf GPU für Modelcall, wenn gewünscht:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         source_on_device = source.to(device)
         pred = self(source_on_device)
         if pred.dtype != torch.float32:
             pred = pred.to(torch.float32)
-
-        # SOFORT AUF CPU zurück – KEIN CUDA mehr danach!
         pred = pred.cpu()
 
         print(f"\n[DEBUG] State: {state}, Batch idx: {batch_idx}, Step: {step}")
@@ -161,8 +159,9 @@ class BasicClassifier(BasicModel):
 
         logging_dict = {}
         try:
-            # Achtung: Loss ggf. auf pred auf GPU ausführen
-            logging_dict['loss'] = self.loss(pred.to(device), target_for_loss.to(device))
+            
+            loss_val = self.loss(pred.to(device), target_for_loss.to(device))
+            logging_dict['loss'] = loss_val
         except Exception as e:
             print("[ERROR] Loss computation failed:", str(e))
             raise
@@ -172,10 +171,11 @@ class BasicClassifier(BasicModel):
         tm_pred_prob = torch.sigmoid(tm_pred)
 
         with torch.no_grad():
+    
+            if tm_target.numel() == 1 or len(torch.unique(tm_target)) < 2:
+                print("[WARNING] Skipping metric update: Only one class in this batch!")
+                return logging_dict['loss']
             try:
-                if tm_target.numel() == 1 or len(torch.unique(tm_target)) < 2:
-                    print("[WARNING] Skipping metric update: Only one class in this batch!")
-                    return logging_dict['loss']
                 print("  [DEBUG] Calling acc/auc_roc metrics update...")
                 self.acc[state + "_"].update(tm_pred, tm_target)
                 self.auc_roc[state + "_"].update(tm_pred_prob, tm_target)
@@ -190,7 +190,18 @@ class BasicClassifier(BasicModel):
         return logging_dict['loss']
 
     def _epoch_end(self, outputs, state):
+        
         batch_size = len(outputs)
         for name, value in [("ACC", self.acc[state + "_"]), ("AUC_ROC", self.auc_roc[state + "_"])]:
-            self.log(f"{state}/{name}", value.compute().cpu(), batch_size=batch_size, on_step=False, on_epoch=True)
+            try:
+                
+                update_cnt = getattr(value, "_update_count", None)
+                if update_cnt is not None and update_cnt == 0:
+                    print(f"[WARNING] Metric {name} skipped (no updates in epoch)!")
+                    continue
+                metric_val = value.compute().cpu()
+                self.log(f"{state}/{name}", metric_val, batch_size=batch_size, on_step=False, on_epoch=True)
+            except Exception as e:
+                print(f"[ERROR] Metric {name} compute() failed, logging 0: {e}")
+                self.log(f"{state}/{name}", torch.tensor(0.0), batch_size=batch_size, on_step=False, on_epoch=True)
             value.reset()
