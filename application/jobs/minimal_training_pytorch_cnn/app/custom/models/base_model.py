@@ -213,7 +213,12 @@ class BasicClassifier(BasicModel):
         self.in_ch = in_ch
         self.out_ch = out_ch
         self.spatial_dims = spatial_dims
-        self.loss = loss(**loss_kwargs)
+        if isinstance(loss, type):
+            self.loss = loss(**loss_kwargs)  
+        else:
+            self.loss = loss                
+        
+
         self.loss_kwargs = loss_kwargs
 
         self.auc_roc = nn.ModuleDict({state: AUROC(**aucroc_kwargs) for state in ["train_", "val_", "test_"]})
