@@ -1,15 +1,14 @@
-import datetime
+from datetime import datetime
 import logging
 import os
 
-import nvflare.client.lightning as flare
-import nvflare.client as flare_util
-from pytorch_lightning import Trainer
-from sympy import Subs
+from sklearn.model_selection import train_test_split
+from torch.utils.data import Subset
 import torch
+from pytorch_lightning import Trainer
+from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.loggers import TensorBoardLogger
 
-from application.jobs.minimal_training_pytorch_cnn.app.custom.main import TRAINING_MODE
-import models.base_model
 from data.datamodules import DataModule
 from data.datasets import MiniDatasetForTesting
 from models import MiniCNNForTesting
@@ -48,8 +47,8 @@ def set_up_data_module(env_vars):
     train_indices, val_indices = train_test_split(indices, test_size=0.2, stratify=labels, random_state=42)
 
     # Create training and validation subsets
-    ds_train = Subs(ds, train_indices)
-    ds_val = Subs(ds, val_indices)
+    ds_train = Subset(ds, train_indices)
+    ds_val = Subset(ds, val_indices)
 
     dm = DataModule(
         ds_train=ds_train,
@@ -115,34 +114,4 @@ def validate_and_train(logger, data_module, model, trainer) -> None:
 def finalize_training(logger, model, checkpointing, trainer) -> None:
     model.save_best_checkpoint(trainer.logger.log_dir, checkpointing.best_model_path)
     logger.info('Training completed successfully')
-
-def main():
-    """
-    Main function for training and evaluating the model using NVFlare and PyTorch Lightning.
-    """
-    logger = set_up_logging()  
-    try:
-        data_module, model, checkpointing, trainer = prepare_training(logger)
-
-        if TRAINING_MODE == "swarm":
-            flare.patch(trainer)  # Patch trainer to enable swarm learning
-            torch.autograd.set_detect_anomaly(True)
-
-            logger.info(f"Site name: {SITE_NAME}")
-
-            while flare.is_running():
-                input_model = flare.receive()
-                logger.info(f"Current round: {input_model.current_round}")
-
-                validate_and_train(logger, data_module, model, trainer)
-
-        elif TRAINING_MODE == "preflight_check" or TRAINING_MODE == "local_training":
-            validate_and_train(logger, data_module, model, trainer)
-
-        finalize_training(logger, model, checkpointing, trainer)
-    except Exception as e:
-        logger.error(f"Error in main function: {e}")
-        raise
-
-if __name__ == "__main__":
-    main()
+    
