@@ -142,16 +142,21 @@ class BasicClassifier(BasicModel):
     def _step(self, batch: dict, batch_idx: int, state: str, step: int, optimizer_idx: int):
         source, target = batch['source'], batch['target']
 
-        # Für Loss (BCEWithLogits) [B,1] float32
+       
         target_for_loss = target.float().view(-1, 1)
         batch_size = source.shape[0]
-        pred = self(source)  # Erwartet [B,1]
+        pred = self(source)  
+
+        
+        if pred.dtype != torch.float32:
+            pred = pred.to(torch.float32)
+        
 
         print(f"\n[DEBUG] State: {state}, Batch idx: {batch_idx}, Step: {step}")
         print("  pred.shape:", pred.shape, "pred.dtype:", pred.dtype, "min/max:", pred.min().item(), pred.max().item())
         print("  target.shape:", target.shape, "target.dtype:", target.dtype, "unique:", torch.unique(target))
 
-        # Berechne Loss
+        
         logging_dict = {}
         try:
             logging_dict['loss'] = self.loss(pred, target_for_loss)
@@ -159,8 +164,8 @@ class BasicClassifier(BasicModel):
             print("[ERROR] Loss computation failed:", str(e))
             raise
 
-        # Für TorchMetrics: Prediction [B], float32! Target: [B], long!
-        tm_pred = pred.squeeze(-1).float()
+        
+        tm_pred = pred.squeeze(-1)
         tm_target = target.view(-1).long()
         tm_pred_prob = torch.sigmoid(tm_pred)
 
