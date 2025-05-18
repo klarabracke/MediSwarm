@@ -160,19 +160,18 @@ class BasicClassifier(BasicModel):
             print("[ERROR] Loss computation failed:", str(e))
             raise
 
-        tm_pred = pred.squeeze(-1)
-        tm_target = target.view(-1).long()
+        tm_pred = pred.squeeze(-1).cpu()
+        tm_target = target.view(-1).long().cpu()
         tm_pred_prob = torch.sigmoid(tm_pred)
 
         with torch.no_grad():
             try:
-                print("  [DEBUG] Calling acc/auc_roc metrics update...")
-                # Workaround: Nur Metrics updaten, wenn beide Klassen im Batch vorkommen
                 if len(torch.unique(tm_target)) < 2:
                     print("[WARNING] Skipping metric update: Only one class in this batch!")
-                else:
-                    self.acc[state + "_"].update(tm_pred.cpu(), tm_target.cpu())
-                    self.auc_roc[state + "_"].update(tm_pred_prob.cpu(), tm_target.cpu())
+                    return logging_dict['loss']
+                print("  [DEBUG] Calling acc/auc_roc metrics update...")
+                self.acc[state + "_"].update(tm_pred, tm_target)
+                self.auc_roc[state + "_"].update(tm_pred_prob, tm_target)
             except Exception as e:
                 print("[ERROR] Metric computation failed:", str(e))
                 raise
