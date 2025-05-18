@@ -136,14 +136,13 @@ class BasicClassifier(BasicModel):
             self.loss = loss
         self.loss_kwargs = loss_kwargs
 
-    
+        # TorchMetrics explizit auf CPU
         self.acc = nn.ModuleDict({state: Accuracy(**acc_kwargs).cpu() for state in ["train_", "val_", "test_"]})
         self.auc_roc = nn.ModuleDict({state: AUROC(**aucroc_kwargs).cpu() for state in ["train_", "val_", "test_"]})
 
     def _step(self, batch: dict, batch_idx: int, state: str, step: int, optimizer_idx: int):
         source, target = batch['source'], batch['target']
 
-        
         target_for_loss = target.float().view(-1, 1)
         batch_size = source.shape[0]
         pred = self(source)
@@ -154,7 +153,6 @@ class BasicClassifier(BasicModel):
         print("  pred.shape:", pred.shape, "pred.dtype:", pred.dtype, "min/max:", pred.min().item(), pred.max().item())
         print("  target.shape:", target.shape, "target.dtype:", target.dtype, "unique:", torch.unique(target))
 
-        
         logging_dict = {}
         try:
             logging_dict['loss'] = self.loss(pred, target_for_loss)
@@ -162,7 +160,6 @@ class BasicClassifier(BasicModel):
             print("[ERROR] Loss computation failed:", str(e))
             raise
 
-        
         tm_pred = pred.squeeze(-1)
         tm_target = target.view(-1).long()
         tm_pred_prob = torch.sigmoid(tm_pred)
@@ -170,8 +167,12 @@ class BasicClassifier(BasicModel):
         with torch.no_grad():
             try:
                 print("  [DEBUG] Calling acc/auc_roc metrics update...")
-                self.acc[state + "_"].update(tm_pred.cpu(), tm_target.cpu())
-                self.auc_roc[state + "_"].update(tm_pred_prob.cpu(), tm_target.cpu())
+                # Workaround: Nur Metrics updaten, wenn beide Klassen im Batch vorkommen
+                if len(torch.unique(tm_target)) < 2:
+                    print("[WARNING] Skipping metric update: Only one class in this batch!")
+                else:
+                    self.acc[state + "_"].update(tm_pred.cpu(), tm_target.cpu())
+                    self.auc_roc[state + "_"].update(tm_pred_prob.cpu(), tm_target.cpu())
             except Exception as e:
                 print("[ERROR] Metric computation failed:", str(e))
                 raise
