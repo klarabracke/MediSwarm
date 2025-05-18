@@ -11,8 +11,8 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 from data.datamodules import DataModule
 from data.datasets import MiniDatasetForTesting
-from models import MiniCNNForTesting
-
+# NEU: loss importieren!
+from models.models_for_testing import MiniCNNForTesting, logit_calibrated_loss
 
 def load_environment_variables():
     """Load environment variables and return them as a dictionary."""
@@ -71,8 +71,9 @@ def prepare_training(logger):
 
         data_module = set_up_data_module(env_vars)
 
-        # Initialize the model
-        model = MiniCNNForTesting()
+        # Initialize the model mit neuer Loss:
+        model = MiniCNNForTesting(loss=logit_calibrated_loss)
+        # Optional: weitere kwargs, z.B. tau oder label_counts als closure (nicht zwingend hier nötig)
 
         to_monitor = "val/AUC_ROC"
         min_max = "max"
