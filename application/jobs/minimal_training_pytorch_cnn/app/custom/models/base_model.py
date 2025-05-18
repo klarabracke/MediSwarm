@@ -117,7 +117,7 @@ class BasicClassifier(BasicModel):
             in_ch: int,
             out_ch: int,
             spatial_dims: int,
-            loss=torch.nn.BCEWithLogitsLoss,   # Empfohlen für Binary!
+            loss=torch.nn.BCEWithLogitsLoss,
             loss_kwargs={},
             optimizer=torch.optim.AdamW,
             optimizer_kwargs={'lr': 1e-3, 'weight_decay': 1e-2},
@@ -136,23 +136,22 @@ class BasicClassifier(BasicModel):
             self.loss = loss
         self.loss_kwargs = loss_kwargs
 
-    
         self.auc_roc = nn.ModuleDict({state: AUROC(**aucroc_kwargs) for state in ["train_", "val_", "test_"]})
         self.acc = nn.ModuleDict({state: Accuracy(**acc_kwargs) for state in ["train_", "val_", "test_"]})
 
     def _step(self, batch: dict, batch_idx: int, state: str, step: int, optimizer_idx: int):
         source, target = batch['source'], batch['target']
 
-        
+        # Für Loss (BCEWithLogits) [B,1] float32
         target_for_loss = target.float().view(-1, 1)
         batch_size = source.shape[0]
-        pred = self(source)
+        pred = self(source)  # Erwartet [B,1]
 
         print(f"\n[DEBUG] State: {state}, Batch idx: {batch_idx}, Step: {step}")
         print("  pred.shape:", pred.shape, "pred.dtype:", pred.dtype, "min/max:", pred.min().item(), pred.max().item())
         print("  target.shape:", target.shape, "target.dtype:", target.dtype, "unique:", torch.unique(target))
 
-        # Compute Loss
+        # Berechne Loss
         logging_dict = {}
         try:
             logging_dict['loss'] = self.loss(pred, target_for_loss)
@@ -160,10 +159,10 @@ class BasicClassifier(BasicModel):
             print("[ERROR] Loss computation failed:", str(e))
             raise
 
-    
+        # Für TorchMetrics: Prediction [B], float32! Target: [B], long!
+        tm_pred = pred.squeeze(-1).float()
         tm_target = target.view(-1).long()
-        tm_pred = pred.view(-1).float()            
-        tm_pred_prob = torch.sigmoid(tm_pred)    
+        tm_pred_prob = torch.sigmoid(tm_pred)
 
         with torch.no_grad():
             try:
