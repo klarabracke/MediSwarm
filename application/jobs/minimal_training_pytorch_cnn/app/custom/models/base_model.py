@@ -213,11 +213,12 @@ class BasicClassifier(BasicModel):
         self.in_ch = in_ch
         self.out_ch = out_ch
         self.spatial_dims = spatial_dims
+
+        # FLEXIBEL
         if isinstance(loss, type):
-            self.loss = loss(**loss_kwargs)  
+            self.loss = loss(**loss_kwargs)  # Für nn.Loss-Klassen
         else:
-            self.loss = loss                
-        
+            self.loss = loss                # Für Funktions-Loss, z.B. logit_calibrated_loss
 
         self.loss_kwargs = loss_kwargs
 
@@ -244,14 +245,29 @@ class BasicClassifier(BasicModel):
         # Run Model
         pred = self(source)
 
+        # ---- DEBUG PRINTS -----
+        print(f"\n[DEBUG] State: {state}, Batch idx: {batch_idx}, Step: {step}")
+        print("  pred.shape:", pred.shape, "pred.dtype:", pred.dtype, "min/max:", pred.min().item(), pred.max().item())
+        print("  target.shape:", target.shape, "target.dtype:", target.dtype, "unique:", torch.unique(target))
+        # -----------------------
+
         # Compute Loss
         logging_dict = {}
-        logging_dict['loss'] = self.loss(pred, target)
+        try:
+            logging_dict['loss'] = self.loss(pred, target)
+        except Exception as e:
+            print("[ERROR] Loss computation failed:", str(e))
+            raise
 
         # Compute Metrics
         with torch.no_grad():
-            self.acc[state + "_"].update(pred, target)
-            self.auc_roc[state + "_"].update(pred, target)
+            try:
+                print("  [DEBUG] Calling acc/auc_roc metrics update...")
+                self.acc[state + "_"].update(pred, target)
+                self.auc_roc[state + "_"].update(pred, target)
+            except Exception as e:
+                print("[ERROR] Metric computation failed:", str(e))
+                raise
 
             # Log Scalars
             for metric_name, metric_val in logging_dict.items():
