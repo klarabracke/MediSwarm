@@ -136,21 +136,19 @@ class BasicClassifier(BasicModel):
             self.loss = loss
         self.loss_kwargs = loss_kwargs
 
-        self.auc_roc = nn.ModuleDict({state: AUROC(**aucroc_kwargs) for state in ["train_", "val_", "test_"]})
-        self.acc = nn.ModuleDict({state: Accuracy(**acc_kwargs) for state in ["train_", "val_", "test_"]})
+    
+        self.acc = nn.ModuleDict({state: Accuracy(**acc_kwargs).cpu() for state in ["train_", "val_", "test_"]})
+        self.auc_roc = nn.ModuleDict({state: AUROC(**aucroc_kwargs).cpu() for state in ["train_", "val_", "test_"]})
 
     def _step(self, batch: dict, batch_idx: int, state: str, step: int, optimizer_idx: int):
         source, target = batch['source'], batch['target']
 
-       
+        
         target_for_loss = target.float().view(-1, 1)
         batch_size = source.shape[0]
-        pred = self(source)  
-
-        
+        pred = self(source)
         if pred.dtype != torch.float32:
             pred = pred.to(torch.float32)
-        
 
         print(f"\n[DEBUG] State: {state}, Batch idx: {batch_idx}, Step: {step}")
         print("  pred.shape:", pred.shape, "pred.dtype:", pred.dtype, "min/max:", pred.min().item(), pred.max().item())
@@ -172,8 +170,8 @@ class BasicClassifier(BasicModel):
         with torch.no_grad():
             try:
                 print("  [DEBUG] Calling acc/auc_roc metrics update...")
-                self.acc[state + "_"].update(tm_pred, tm_target)
-                self.auc_roc[state + "_"].update(tm_pred_prob, tm_target)
+                self.acc[state + "_"].update(tm_pred.cpu(), tm_target.cpu())
+                self.auc_roc[state + "_"].update(tm_pred_prob.cpu(), tm_target.cpu())
             except Exception as e:
                 print("[ERROR] Metric computation failed:", str(e))
                 raise
