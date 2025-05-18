@@ -17,8 +17,6 @@ def logit_calibrated_loss(logits, targets, tau=1.0, label_counts=None):
         label_counts = torch.ones(logits.shape[-1], device=logits.device)
     if logits.dim() == 1:
         logits = logits.unsqueeze(1)
-    
-
     targets = targets.long().view(-1)
     cal_logit = torch.exp(
         logits - (tau * torch.pow(label_counts, -1/4).unsqueeze(0).expand_as(logits))
@@ -28,6 +26,7 @@ def logit_calibrated_loss(logits, targets, tau=1.0, label_counts=None):
     return loss.mean()
 
 # ====== MODELLE ======
+
 class CNNForTesting(BasicClassifier):
     def __init__(self,
                  in_ch: int = 1,
@@ -49,9 +48,8 @@ class CNNForTesting(BasicClassifier):
         return self.model(x_in)
 
 class MiniCNNForTesting(CNNForTesting):
-    def __init__(self):
-        super().__init__()
-
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.model = torch.nn.Sequential(
             nn.Conv2d(1, 3, 3),
             nn.ReLU(),
@@ -62,10 +60,8 @@ class MiniCNNForTesting(CNNForTesting):
         )
 
 class FixedSizeCNNForTesting(CNNForTesting):
-    def __init__(self,
-                 artificial_model_size: int):
-        super().__init__()
-
+    def __init__(self, artificial_model_size: int, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         float_size = 2   # 2 or 4, depending on float size on GPU
         heuristic_factor = 1.03  # to compensate for approximate formula
         linear_size = int(math.sqrt(artificial_model_size/float_size)/heuristic_factor)

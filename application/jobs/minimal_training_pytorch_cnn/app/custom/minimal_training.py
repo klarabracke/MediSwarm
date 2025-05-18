@@ -115,4 +115,3 @@ def validate_and_train(logger, data_module, model, trainer) -> None:
 def finalize_training(logger, model, checkpointing, trainer) -> None:
     model.save_best_checkpoint(trainer.logger.log_dir, checkpointing.best_model_path)
     logger.info('Training completed successfully')
-    
