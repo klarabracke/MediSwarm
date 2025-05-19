@@ -187,7 +187,6 @@ class BasicClassifier(BasicModel):
         batch_size = len(outputs)
         for name, value in [("ACC", self.acc[state + "_"]), ("AUC_ROC", self.auc_roc[state + "_"])]:
             try:
-                # Nur compute, wenn mindestens ein update!
                 update_cnt = getattr(value, "_update_count", 0)
                 if update_cnt == 0:
                     print(f"[WARNING] Metric {name} skipped (no updates in epoch)!")
@@ -198,3 +197,6 @@ class BasicClassifier(BasicModel):
                 print(f"[ERROR] Metric {name} compute() failed, logging 0: {e}")
                 self.log(f"{state}/{name}", torch.tensor(0.0), batch_size=batch_size, on_step=False, on_epoch=True)
             value.reset()
+     
+        self.acc[state + "_"] = Accuracy(task="binary", threshold=0.0).cpu()
+        self.auc_roc[state + "_"] = AUROC(task="binary").cpu()
