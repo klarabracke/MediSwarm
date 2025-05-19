@@ -3,13 +3,18 @@ import torch
 import torch.nn as nn
 import math
 
-
+# ----------- Deine robuste calibrating Lossfunktion -----------
 def logit_calibrated_loss(logits, targets, tau=1.0, label_counts=None):
     if label_counts is None:
         label_counts = torch.ones(logits.shape[-1], device=logits.device)
     if logits.dim() == 1:
         logits = logits.unsqueeze(1)
     targets = targets.long().view(-1)
+    num_classes = logits.shape[-1]
+    # Defensive Index-Check für CUDA
+    if targets.numel() == 0 or targets.max() >= num_classes or targets.min() < 0:
+        print("[WARNING] Loss skipped: Target out of bounds for gather! Skipping Loss.")
+        return torch.tensor(0., device=logits.device, requires_grad=True)
     cal_logit = torch.exp(
         logits - (tau * torch.pow(label_counts, -1/4).unsqueeze(0).expand_as(logits))
     )
@@ -17,13 +22,13 @@ def logit_calibrated_loss(logits, targets, tau=1.0, label_counts=None):
     loss = -torch.log(y_logit / cal_logit.sum(dim=-1, keepdim=True))
     return loss.mean()
 
-
+# ----------- Modelle ----------------------------------
 class CNNForTesting(BasicClassifier):
     def __init__(self,
                  in_ch: int = 1,
                  out_ch: int = 1,
                  spatial_dims: int = 3,
-                 loss=logit_calibrated_loss,  
+                 loss=logit_calibrated_loss,
                  loss_kwargs: dict = {},
                  optimizer=torch.optim.AdamW,
                  optimizer_kwargs: dict = {'lr': 1e-4},

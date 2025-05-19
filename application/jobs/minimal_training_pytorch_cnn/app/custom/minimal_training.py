@@ -73,7 +73,7 @@ def prepare_training(logger):
 
         # Initialize the model mit neuer Loss:
         model = MiniCNNForTesting(loss=logit_calibrated_loss)
-        # Optional: weitere kwargs, z.B. tau oder label_counts als closure (nicht zwingend hier nötig)
+      
 
         to_monitor = "val/AUC_ROC"
         min_max = "max"
