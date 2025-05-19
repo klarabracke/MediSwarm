@@ -4,7 +4,7 @@ import json
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
-from torchmetrics.functional import auroc, accuracy
+from torchmetrics import AUROC, Accuracy
 
 class VeryBasicModel(pl.LightningModule):
     def __init__(self):
@@ -100,7 +100,9 @@ class BasicClassifier(BasicModel):
             optimizer=torch.optim.AdamW,
             optimizer_kwargs={'lr': 1e-3, 'weight_decay': 1e-2},
             lr_scheduler=None,
-            lr_scheduler_kwargs={}
+            lr_scheduler_kwargs={},
+            aucroc_kwargs=None,
+            acc_kwargs=None
     ):
         super().__init__(optimizer, optimizer_kwargs, lr_scheduler, lr_scheduler_kwargs)
         self.in_ch = in_ch
@@ -112,8 +114,17 @@ class BasicClassifier(BasicModel):
             self.loss = loss
         self.loss_kwargs = loss_kwargs
 
+        self.auc_roc = nn.ModuleDict({
+            state: AUROC(**(aucroc_kwargs or {"task": "binary"})).cpu()
+            for state in ["train_", "val_", "test_"]
+        })
+        self.acc = nn.ModuleDict({
+            state: Accuracy(**(acc_kwargs or {"task": "binary"})).cpu()
+            for state in ["train_", "val_", "test_"]
+        })
+
     def _step(self, batch: dict, batch_idx: int, state: str, step: int, optimizer_idx: int):
-        source, target = batch['source'], batch['target']
+        source, target = batch['source'].cpu(), batch['target'].cpu()
         target_for_loss = target.float().view(-1, 1)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         source_on_device = source.to(device)
@@ -121,9 +132,7 @@ class BasicClassifier(BasicModel):
         if pred.dtype != torch.float32:
             pred = pred.to(torch.float32)
         pred = pred.cpu()
-        target = target.cpu()
         batch_size = source.shape[0]
-
         logging_dict = {}
         try:
             loss_val = self.loss(pred.to(device), target_for_loss.to(device))
@@ -132,7 +141,6 @@ class BasicClassifier(BasicModel):
             print("[ERROR] Loss computation failed:", str(e))
             raise
 
-       
         tm_pred = pred.squeeze(-1)
         tm_target = target.view(-1).long()
         tm_pred_prob = torch.sigmoid(tm_pred)
@@ -140,8 +148,8 @@ class BasicClassifier(BasicModel):
         if tm_target.numel() == 1 or len(torch.unique(tm_target)) < 2:
             print("[WARNING] Skipping metric computation: only one class in batch!")
         else:
-            acc_value = accuracy(tm_pred, tm_target, task="binary", threshold=0.0).cpu()
-            auroc_value = auroc(tm_pred_prob, tm_target, task="binary").cpu()
+            acc_value = Accuracy(task="binary", threshold=0.0).cpu()(tm_pred, tm_target)
+            auroc_value = AUROC(task="binary").cpu()(tm_pred_prob, tm_target)
             self.log(f"{state}/ACC", acc_value, batch_size=batch_size, on_step=False, on_epoch=True)
             self.log(f"{state}/AUC_ROC", auroc_value, batch_size=batch_size, on_step=False, on_epoch=True)
 
