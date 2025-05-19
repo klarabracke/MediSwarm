@@ -115,11 +115,13 @@ class BasicClassifier(BasicModel):
             out_ch: int,
             spatial_dims: int,
             loss=torch.nn.BCEWithLogitsLoss,
-            loss_kwargs={},
+            loss_kwargs=None,
             optimizer=torch.optim.AdamW,
-            optimizer_kwargs={'lr': 1e-3, 'weight_decay': 1e-2},
+            optimizer_kwargs=None,
             lr_scheduler=None,
-            lr_scheduler_kwargs={}
+            lr_scheduler_kwargs=None,
+            aucroc_kwargs=None,
+            acc_kwargs=None
     ):
         super().__init__(optimizer, optimizer_kwargs, lr_scheduler, lr_scheduler_kwargs)
         self.in_ch = in_ch
