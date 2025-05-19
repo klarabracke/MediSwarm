@@ -137,7 +137,7 @@ class BasicClassifier(BasicModel):
         self.auc_roc = nn.ModuleDict({state: AUROC(**aucroc_kwargs).cpu() for state in ["train_", "val_", "test_"]})
 
     def _step(self, batch: dict, batch_idx: int, state: str, step: int, optimizer_idx: int):
-   
+        # Data auf CPU, alles weitere auf CPU
         source, target = batch['source'].cpu(), batch['target'].cpu()
 
         target_for_loss = target.float().view(-1, 1)
@@ -166,7 +166,6 @@ class BasicClassifier(BasicModel):
         tm_pred_prob = torch.sigmoid(tm_pred)
 
         with torch.no_grad():
-      
             if tm_target.numel() == 1 or len(torch.unique(tm_target)) < 2:
                 print("[WARNING] Skipping metric update: Only one class in this batch!")
                 return logging_dict['loss']
@@ -188,7 +187,7 @@ class BasicClassifier(BasicModel):
         batch_size = len(outputs)
         for name, value in [("ACC", self.acc[state + "_"]), ("AUC_ROC", self.auc_roc[state + "_"])]:
             try:
-              
+                # Nur compute, wenn mindestens ein update!
                 update_cnt = getattr(value, "_update_count", 0)
                 if update_cnt == 0:
                     print(f"[WARNING] Metric {name} skipped (no updates in epoch)!")
