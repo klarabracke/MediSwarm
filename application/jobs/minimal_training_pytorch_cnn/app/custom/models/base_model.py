@@ -7,7 +7,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.utilities.cloud_io import load as pl_load
 from pytorch_lightning.utilities.migration import pl_legacy_patch
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
-from torchmetrics import AUROC, Accuracy
+from torchmetrics.functional import auroc, accuracy
 
 class VeryBasicModel(pl.LightningModule):
     def __init__(self):
@@ -119,9 +119,7 @@ class BasicClassifier(BasicModel):
             optimizer=torch.optim.AdamW,
             optimizer_kwargs={'lr': 1e-3, 'weight_decay': 1e-2},
             lr_scheduler=None,
-            lr_scheduler_kwargs={},
-            aucroc_kwargs={"task": "binary"},
-            acc_kwargs={"task": "binary", "threshold": 0.0}
+            lr_scheduler_kwargs={}
     ):
         super().__init__(optimizer, optimizer_kwargs, lr_scheduler, lr_scheduler_kwargs)
         self.in_ch = in_ch
@@ -133,24 +131,17 @@ class BasicClassifier(BasicModel):
             self.loss = loss
         self.loss_kwargs = loss_kwargs
 
-        self.acc = nn.ModuleDict({state: Accuracy(**acc_kwargs).cpu() for state in ["train_", "val_", "test_"]})
-        self.auc_roc = nn.ModuleDict({state: AUROC(**aucroc_kwargs).cpu() for state in ["train_", "val_", "test_"]})
-
     def _step(self, batch: dict, batch_idx: int, state: str, step: int, optimizer_idx: int):
-        source, target = batch['source'].cpu(), batch['target'].cpu()
-
+        source, target = batch['source'], batch['target']
         target_for_loss = target.float().view(-1, 1)
-        batch_size = source.shape[0]
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         source_on_device = source.to(device)
         pred = self(source_on_device)
         if pred.dtype != torch.float32:
             pred = pred.to(torch.float32)
         pred = pred.cpu()
-
-        print(f"\n[DEBUG] State: {state}, Batch idx: {batch_idx}, Step: {step}")
-        print("  pred.shape:", pred.shape, "pred.dtype:", pred.dtype, "min/max:", pred.min().item(), pred.max().item())
-        print("  target.shape:", target.shape, "target.dtype:", target.dtype, "unique:", torch.unique(target))
+        target = target.cpu()
+        batch_size = source.shape[0]
 
         logging_dict = {}
         try:
@@ -160,51 +151,27 @@ class BasicClassifier(BasicModel):
             print("[ERROR] Loss computation failed:", str(e))
             raise
 
+        # Torchmetrics/Metrics auf CPU, lokal – no state!
         tm_pred = pred.squeeze(-1)
         tm_target = target.view(-1).long()
         tm_pred_prob = torch.sigmoid(tm_pred)
 
-        with torch.no_grad():
-            if tm_target.numel() == 1 or len(torch.unique(tm_target)) < 2:
-                print("[WARNING] Skipping metric update: Only one class in this batch!")
-                return logging_dict['loss']
-            try:
-                print("  [DEBUG] Calling acc/auc_roc metrics update...")
-                self.acc[state + "_"].update(tm_pred, tm_target)
-                self.auc_roc[state + "_"].update(tm_pred_prob, tm_target)
-            except Exception as e:
-                print("[ERROR] Metric computation failed:", str(e))
-                raise
+        if tm_target.numel() == 1 or len(torch.unique(tm_target)) < 2:
+            print("[WARNING] Skipping metric computation: only one class in batch!")
+            self.last_acc = None
+            self.last_auroc = None
+        else:
+            acc_value = accuracy(tm_pred, tm_target, task="binary", threshold=0.0).cpu()
+            auroc_value = auroc(tm_pred_prob, tm_target, task="binary").cpu()
+            self.last_acc = acc_value
+            self.last_auroc = auroc_value
 
-            for metric_name, metric_val in logging_dict.items():
-                self.log(f"{state}/{metric_name}", metric_val.cpu() if hasattr(metric_val, 'cpu') else metric_val,
-                         batch_size=batch_size, on_step=True, on_epoch=True)
+        
+        if self.last_acc is not None:
+            self.log(f"{state}/ACC", self.last_acc, batch_size=batch_size, on_step=False, on_epoch=True)
+        if self.last_auroc is not None:
+            self.log(f"{state}/AUC_ROC", self.last_auroc, batch_size=batch_size, on_step=False, on_epoch=True)
 
         return logging_dict['loss']
 
-    def _epoch_end(self, outputs, state):
-        batch_size = len(outputs)
-        for name, value in [("ACC", self.acc[state + "_"]), ("AUC_ROC", self.auc_roc[state + "_"])]:
-            try:
-                update_cnt = getattr(value, "_update_count", 0)
-                if update_cnt == 0:
-                    print(f"[WARNING] Metric {name} skipped (no updates in epoch)!")
-                    # <<< TorchMetric States forcible detach on CPU!
-                    for k in list(value._defaults):
-                        v = value._defaults[k]
-                        if hasattr(v, "cpu"):
-                            value._defaults[k] = v.detach().cpu()
-                    # NEUINITIALISIERUNG
-                    if name == "ACC":
-                        self.acc[state + "_"] = Accuracy(task="binary", threshold=0.0).cpu()
-                    if name == "AUC_ROC":
-                        self.auc_roc[state + "_"] = AUROC(task="binary").cpu()
-                    continue
-                metric_val = value.compute().cpu()
-                self.log(f"{state}/{name}", metric_val, batch_size=batch_size, on_step=False, on_epoch=True)
-            except Exception as e:
-                print(f"[ERROR] Metric {name} compute() failed, logging 0: {e}")
-                self.log(f"{state}/{name}", torch.tensor(0.0), batch_size=batch_size, on_step=False, on_epoch=True)
-            value.reset()
-        self.acc[state + "_"] = Accuracy(task="binary", threshold=0.0).cpu()
-        self.auc_roc[state + "_"] = AUROC(task="binary").cpu()
+    
