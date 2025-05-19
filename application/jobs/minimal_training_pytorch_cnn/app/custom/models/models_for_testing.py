@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import math
 
-
 def logit_calibrated_loss(logits, targets, tau=1.0, label_counts=None):
     if label_counts is None:
         label_counts = torch.ones(logits.shape[-1], device=logits.device)
@@ -11,10 +10,8 @@ def logit_calibrated_loss(logits, targets, tau=1.0, label_counts=None):
         logits = logits.unsqueeze(1)
     targets = targets.long().view(-1)
     num_classes = logits.shape[-1]
- 
     if targets.numel() == 0 or targets.max() >= num_classes or targets.min() < 0:
         print("[WARNING] Loss skipped: Target out of bounds for gather! Skipping Loss.")
- 
         return torch.tensor(0., device=logits.device, requires_grad=True)
     cal_logit = torch.exp(
         logits - (tau * torch.pow(label_counts, -1/4).unsqueeze(0).expand_as(logits))
@@ -34,8 +31,8 @@ class CNNForTesting(BasicClassifier):
                  optimizer_kwargs: dict = {'lr': 1e-4},
                  lr_scheduler=None,
                  lr_scheduler_kwargs: dict = {},
-                 aucroc_kwargs: dict = {"task": "binary"},
-                 acc_kwargs: dict = {"task": "binary"},
+                 aucroc_kwargs: dict = None,
+                 acc_kwargs: dict = None,
                  **kwargs
                  ):
         super().__init__(
