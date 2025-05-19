@@ -137,7 +137,6 @@ class BasicClassifier(BasicModel):
         self.auc_roc = nn.ModuleDict({state: AUROC(**aucroc_kwargs).cpu() for state in ["train_", "val_", "test_"]})
 
     def _step(self, batch: dict, batch_idx: int, state: str, step: int, optimizer_idx: int):
-        # Data auf CPU, alles weitere auf CPU
         source, target = batch['source'].cpu(), batch['target'].cpu()
 
         target_for_loss = target.float().view(-1, 1)
@@ -190,6 +189,16 @@ class BasicClassifier(BasicModel):
                 update_cnt = getattr(value, "_update_count", 0)
                 if update_cnt == 0:
                     print(f"[WARNING] Metric {name} skipped (no updates in epoch)!")
+                    # <<< TorchMetric States forcible detach on CPU!
+                    for k in list(value._defaults):
+                        v = value._defaults[k]
+                        if hasattr(v, "cpu"):
+                            value._defaults[k] = v.detach().cpu()
+                    # NEUINITIALISIERUNG
+                    if name == "ACC":
+                        self.acc[state + "_"] = Accuracy(task="binary", threshold=0.0).cpu()
+                    if name == "AUC_ROC":
+                        self.auc_roc[state + "_"] = AUROC(task="binary").cpu()
                     continue
                 metric_val = value.compute().cpu()
                 self.log(f"{state}/{name}", metric_val, batch_size=batch_size, on_step=False, on_epoch=True)
@@ -197,6 +206,5 @@ class BasicClassifier(BasicModel):
                 print(f"[ERROR] Metric {name} compute() failed, logging 0: {e}")
                 self.log(f"{state}/{name}", torch.tensor(0.0), batch_size=batch_size, on_step=False, on_epoch=True)
             value.reset()
-     
         self.acc[state + "_"] = Accuracy(task="binary", threshold=0.0).cpu()
         self.auc_roc[state + "_"] = AUROC(task="binary").cpu()
