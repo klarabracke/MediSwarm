@@ -11,8 +11,8 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 from data.datamodules import DataModule
 from data.datasets import MiniDatasetForTesting
-from models import MiniCNNForTesting
-from models.models_for_testing import logit_calibrated_loss
+
+from models.models_for_testing import MiniCNNForTesting, logit_calibrated_loss
 
 def load_environment_variables():
     """Load environment variables and return them as a dictionary."""
@@ -28,6 +28,7 @@ def load_environment_variables():
 
 def create_run_directory(scratch_dir):
     current_time = datetime.now().strftime("%Y_%m_%d_%H%M%S")
+    # make dir if not exist
     if not os.path.exists(scratch_dir):
         os.makedirs(scratch_dir)
     return os.path.join(scratch_dir, f"{current_time}_minimal_training_pytorch_cnn")
@@ -40,17 +41,23 @@ def set_up_logging():
 def set_up_data_module(env_vars):
     ds = MiniDatasetForTesting()
     labels = ds.get_labels()
+
+    
     indices = list(range(len(ds)))
     train_indices, val_indices = train_test_split(indices, test_size=0.2, stratify=labels, random_state=42)
+
+
     ds_train = Subset(ds, train_indices)
     ds_val = Subset(ds, val_indices)
+
     dm = DataModule(
         ds_train=ds_train,
         ds_val=ds_val,
-        batch_size=2,            
-        num_workers=4,          
+        batch_size=2,
+        num_workers=4,
         pin_memory=True,
     )
+
     return dm
 
 def prepare_training(logger):
@@ -64,8 +71,9 @@ def prepare_training(logger):
 
         data_module = set_up_data_module(env_vars)
 
-    
+        # Initialize the model mit neuer Loss:
         model = MiniCNNForTesting(loss=logit_calibrated_loss)
+      
 
         to_monitor = "val/AUC_ROC"
         min_max = "max"
@@ -81,7 +89,7 @@ def prepare_training(logger):
 
         trainer = Trainer(
             accelerator=accelerator,
-            precision=32, 
+            precision=16,
             default_root_dir=str(path_run_dir),
             callbacks=[checkpointing],
             enable_checkpointing=True,

@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import math
 
+# ----------- Deine robuste calibrating Lossfunktion -----------
 def logit_calibrated_loss(logits, targets, tau=1.0, label_counts=None):
     if label_counts is None:
         label_counts = torch.ones(logits.shape[-1], device=logits.device)
@@ -10,6 +11,7 @@ def logit_calibrated_loss(logits, targets, tau=1.0, label_counts=None):
         logits = logits.unsqueeze(1)
     targets = targets.long().view(-1)
     num_classes = logits.shape[-1]
+    # Defensive Index-Check für CUDA
     if targets.numel() == 0 or targets.max() >= num_classes or targets.min() < 0:
         print("[WARNING] Loss skipped: Target out of bounds for gather! Skipping Loss.")
         return torch.tensor(0., device=logits.device, requires_grad=True)
@@ -20,6 +22,7 @@ def logit_calibrated_loss(logits, targets, tau=1.0, label_counts=None):
     loss = -torch.log(y_logit / cal_logit.sum(dim=-1, keepdim=True))
     return loss.mean()
 
+# ----------- Modelle ----------------------------------
 class CNNForTesting(BasicClassifier):
     def __init__(self,
                  in_ch: int = 1,
@@ -31,8 +34,8 @@ class CNNForTesting(BasicClassifier):
                  optimizer_kwargs: dict = {'lr': 1e-4},
                  lr_scheduler=None,
                  lr_scheduler_kwargs: dict = {},
-                 aucroc_kwargs: dict = None,
-                 acc_kwargs: dict = None,
+                 aucroc_kwargs: dict = {"task": "binary"},
+                 acc_kwargs: dict = {"task": "binary"},
                  **kwargs
                  ):
         super().__init__(

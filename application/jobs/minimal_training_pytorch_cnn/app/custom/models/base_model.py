@@ -4,7 +4,10 @@ import json
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
-from torchmetrics import AUROC, Accuracy
+from pytorch_lightning.utilities.cloud_io import load as pl_load
+from pytorch_lightning.utilities.migration import pl_legacy_patch
+from pytorch_lightning.utilities.types import EPOCH_OUTPUT
+from torchmetrics.functional import auroc, accuracy
 
 class VeryBasicModel(pl.LightningModule):
     def __init__(self):
@@ -20,37 +23,51 @@ class VeryBasicModel(pl.LightningModule):
     def _step(self, batch: dict, batch_idx: int, state: str, step: int, optimizer_idx: int):
         raise NotImplementedError
 
-    def _epoch_end(self, outputs, state): return
+    def _epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]], state: str):
+        return
 
-    def training_step(self, batch, batch_idx, optimizer_idx=0):
+    def training_step(self, batch: dict, batch_idx: int, optimizer_idx: int = 0):
         self._step_train += 1
         return self._step(batch, batch_idx, "train", self._step_train, optimizer_idx)
-    def validation_step(self, batch, batch_idx, optimizer_idx=0):
+
+    def validation_step(self, batch: dict, batch_idx: int, optimizer_idx: int = 0):
         self._step_val += 1
         return self._step(batch, batch_idx, "val", self._step_val, optimizer_idx)
-    def test_step(self, batch, batch_idx, optimizer_idx=0):
+
+    def test_step(self, batch: dict, batch_idx: int, optimizer_idx: int = 0):
         self._step_test += 1
         return self._step(batch, batch_idx, "test", self._step_test, optimizer_idx)
-    def training_epoch_end(self, outputs): return
-    def validation_epoch_end(self, outputs): return
-    def test_epoch_end(self, outputs): return
+
+    def training_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
+        self._epoch_end(outputs, "train")
+        return super().training_epoch_end(outputs)
+
+    def validation_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
+        self._epoch_end(outputs, "val")
+        return super().validation_epoch_end(outputs)
+
+    def test_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
+        self._epoch_end(outputs, "test")
+        return super().test_epoch_end(outputs)
 
     @classmethod
     def save_best_checkpoint(cls, path_checkpoint_dir, best_model_path):
         with open(Path(path_checkpoint_dir) / 'best_checkpoint.json', 'w') as f:
             json.dump({'best_model_epoch': Path(best_model_path).name}, f)
+
     @classmethod
     def _get_best_checkpoint_path(cls, path_checkpoint_dir, version=0, **kwargs):
         path_version = 'lightning_logs/version_' + str(version)
         with open(Path(path_checkpoint_dir) / path_version / 'best_checkpoint.json', 'r') as f:
             path_rel_best_checkpoint = Path(json.load(f)['best_model_epoch'])
         return Path(path_checkpoint_dir) / path_rel_best_checkpoint
+
     @classmethod
     def load_best_checkpoint(cls, path_checkpoint_dir, version=0, **kwargs):
         path_best_checkpoint = cls._get_best_checkpoint_path(path_checkpoint_dir, version)
         return cls.load_from_checkpoint(path_best_checkpoint, **kwargs)
+
     def load_pretrained(self, checkpoint_path, map_location=None, **kwargs):
-        from pytorch_lightning.utilities.cloud_io import load as pl_load, pl_legacy_patch
         if checkpoint_path.is_dir():
             checkpoint_path = self._get_best_checkpoint_path(checkpoint_path, **kwargs)
         with pl_legacy_patch():
@@ -59,6 +76,7 @@ class VeryBasicModel(pl.LightningModule):
             else:
                 checkpoint = pl_load(checkpoint_path, map_location=lambda storage, loc: storage)
         return self.load_weights(checkpoint["state_dict"], **kwargs)
+
     def load_weights(self, pretrained_weights, strict=True, **kwargs):
         filter_fn = kwargs.get('filter', lambda key: key in pretrained_weights)
         init_weights = self.state_dict()
@@ -81,6 +99,7 @@ class BasicModel(VeryBasicModel):
         self.optimizer_kwargs = optimizer_kwargs
         self.lr_scheduler = lr_scheduler
         self.lr_scheduler_kwargs = lr_scheduler_kwargs
+
     def configure_optimizers(self):
         optimizer = self.optimizer(self.parameters(), **self.optimizer_kwargs)
         if self.lr_scheduler is not None:
@@ -96,11 +115,11 @@ class BasicClassifier(BasicModel):
             out_ch: int,
             spatial_dims: int,
             loss=torch.nn.BCEWithLogitsLoss,
-            loss_kwargs={},
+            loss_kwargs=None,
             optimizer=torch.optim.AdamW,
-            optimizer_kwargs={'lr': 1e-3, 'weight_decay': 1e-2},
+            optimizer_kwargs=None,
             lr_scheduler=None,
-            lr_scheduler_kwargs={},
+            lr_scheduler_kwargs=None,
             aucroc_kwargs=None,
             acc_kwargs=None
     ):
@@ -114,17 +133,8 @@ class BasicClassifier(BasicModel):
             self.loss = loss
         self.loss_kwargs = loss_kwargs
 
-        self.auc_roc = nn.ModuleDict({
-            state: AUROC(**(aucroc_kwargs or {"task": "binary"})).cpu()
-            for state in ["train_", "val_", "test_"]
-        })
-        self.acc = nn.ModuleDict({
-            state: Accuracy(**(acc_kwargs or {"task": "binary"})).cpu()
-            for state in ["train_", "val_", "test_"]
-        })
-
     def _step(self, batch: dict, batch_idx: int, state: str, step: int, optimizer_idx: int):
-        source, target = batch['source'].cpu(), batch['target'].cpu()
+        source, target = batch['source'], batch['target']
         target_for_loss = target.float().view(-1, 1)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         source_on_device = source.to(device)
@@ -132,7 +142,9 @@ class BasicClassifier(BasicModel):
         if pred.dtype != torch.float32:
             pred = pred.to(torch.float32)
         pred = pred.cpu()
+        target = target.cpu()
         batch_size = source.shape[0]
+
         logging_dict = {}
         try:
             loss_val = self.loss(pred.to(device), target_for_loss.to(device))
@@ -141,16 +153,27 @@ class BasicClassifier(BasicModel):
             print("[ERROR] Loss computation failed:", str(e))
             raise
 
+        # Torchmetrics/Metrics auf CPU, lokal – no state!
         tm_pred = pred.squeeze(-1)
         tm_target = target.view(-1).long()
         tm_pred_prob = torch.sigmoid(tm_pred)
 
         if tm_target.numel() == 1 or len(torch.unique(tm_target)) < 2:
             print("[WARNING] Skipping metric computation: only one class in batch!")
+            self.last_acc = None
+            self.last_auroc = None
         else:
-            acc_value = Accuracy(task="binary", threshold=0.0).cpu()(tm_pred, tm_target)
-            auroc_value = AUROC(task="binary").cpu()(tm_pred_prob, tm_target)
-            self.log(f"{state}/ACC", acc_value, batch_size=batch_size, on_step=False, on_epoch=True)
-            self.log(f"{state}/AUC_ROC", auroc_value, batch_size=batch_size, on_step=False, on_epoch=True)
+            acc_value = accuracy(tm_pred, tm_target, task="binary", threshold=0.0).cpu()
+            auroc_value = auroc(tm_pred_prob, tm_target, task="binary").cpu()
+            self.last_acc = acc_value
+            self.last_auroc = auroc_value
 
-        return loss_val
+        
+        if self.last_acc is not None:
+            self.log(f"{state}/ACC", self.last_acc, batch_size=batch_size, on_step=False, on_epoch=True)
+        if self.last_auroc is not None:
+            self.log(f"{state}/AUC_ROC", self.last_auroc, batch_size=batch_size, on_step=False, on_epoch=True)
+
+        return logging_dict['loss']
+
+    
