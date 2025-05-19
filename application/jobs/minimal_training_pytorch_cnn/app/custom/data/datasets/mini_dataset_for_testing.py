@@ -7,32 +7,29 @@ class MiniDatasetForTesting(data.Dataset):
     def __init__(self):
         num_entries = 10
         self.data = [
-            {
-                'uid': str(uuid.uuid4()),
-                'source': self.dummy_image(index),
-                'target': index % 2
-            }
+            {'uid': str(uuid.uuid4()), 'source': self.dummy_image(index), 'target': int(index % 2)}
             for index in range(num_entries)
         ]
 
     @staticmethod
     def dummy_image(index):
         shape = (1, 18, 18)
-        dtype = np.float16    
+        dtype = np.float16
         if index % 2 == 0:
             array = np.zeros(shape, dtype=dtype)
             array[0, 0, index] = 1
         else:
             array = np.ones(shape, dtype=dtype)
             array[0, 0, index] = 0
-       
-        return torch.from_numpy(array).float()
+        return torch.from_numpy(array)
 
     def __getitem__(self, index):
-        sample = self.data[index].copy()
-       
-        sample['source'] = sample['source'].float()
-        return sample
+        item = self.data[index]
+        return {
+            'uid': item['uid'],
+            'source': item['source'],
+            'target': torch.tensor(item['target']).long(),  
+        }
 
     def __len__(self):
         return len(self.data)
