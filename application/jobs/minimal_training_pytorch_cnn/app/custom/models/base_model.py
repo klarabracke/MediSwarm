@@ -9,7 +9,6 @@ from pytorch_lightning.utilities.migration import pl_legacy_patch
 from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from torchmetrics import AUROC, Accuracy
 
-
 class VeryBasicModel(pl.LightningModule):
     def __init__(self):
         super().__init__()
@@ -86,7 +85,6 @@ class VeryBasicModel(pl.LightningModule):
         self.load_state_dict(init_weights, strict=strict)
         return self
 
-
 class BasicModel(VeryBasicModel):
     def __init__(
             self,
@@ -109,7 +107,6 @@ class BasicModel(VeryBasicModel):
             return [optimizer], [lr_scheduler]
         else:
             return [optimizer]
-
 
 class BasicClassifier(BasicModel):
     def __init__(
@@ -140,10 +137,9 @@ class BasicClassifier(BasicModel):
         self.auc_roc = nn.ModuleDict({state: AUROC(**aucroc_kwargs).cpu() for state in ["train_", "val_", "test_"]})
 
     def _step(self, batch: dict, batch_idx: int, state: str, step: int, optimizer_idx: int):
-       
+   
         source, target = batch['source'].cpu(), batch['target'].cpu()
 
-        # Für Loss (BCEWithLogits), [B,1] float32
         target_for_loss = target.float().view(-1, 1)
         batch_size = source.shape[0]
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -159,7 +155,6 @@ class BasicClassifier(BasicModel):
 
         logging_dict = {}
         try:
-            
             loss_val = self.loss(pred.to(device), target_for_loss.to(device))
             logging_dict['loss'] = loss_val
         except Exception as e:
@@ -171,7 +166,7 @@ class BasicClassifier(BasicModel):
         tm_pred_prob = torch.sigmoid(tm_pred)
 
         with torch.no_grad():
-    
+      
             if tm_target.numel() == 1 or len(torch.unique(tm_target)) < 2:
                 print("[WARNING] Skipping metric update: Only one class in this batch!")
                 return logging_dict['loss']
@@ -190,13 +185,12 @@ class BasicClassifier(BasicModel):
         return logging_dict['loss']
 
     def _epoch_end(self, outputs, state):
-        
         batch_size = len(outputs)
         for name, value in [("ACC", self.acc[state + "_"]), ("AUC_ROC", self.auc_roc[state + "_"])]:
             try:
-                
-                update_cnt = getattr(value, "_update_count", None)
-                if update_cnt is not None and update_cnt == 0:
+              
+                update_cnt = getattr(value, "_update_count", 0)
+                if update_cnt == 0:
                     print(f"[WARNING] Metric {name} skipped (no updates in epoch)!")
                     continue
                 metric_val = value.compute().cpu()
