@@ -48,7 +48,7 @@ class CNNForTesting(BasicClassifier):
 class MiniCNNForTesting(CNNForTesting):
     def __init__(self, loss=None, **kwargs):
         super().__init__(**kwargs)
-        self.loss = loss or nn.BCEWithLogitsLoss()
+        self.loss = loss
         self.model = nn.Sequential(
             nn.Conv2d(1, 3, 3),
             nn.ReLU(),
