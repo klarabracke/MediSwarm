@@ -12,7 +12,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 from data.datamodules import DataModule
 from data.datasets import MiniDatasetForTesting
-from models import MiniCNNForTesting
+from models_for_testing import MiniCNNForTesting
 
 from collections import Counter
 
@@ -27,6 +27,7 @@ class LogitCalibratedLoss(nn.Module):
     def forward(self, logits, targets):
         device = logits.device
         label_counts = self.clients_label_counts[self.client_id].to(device)
+        targets = targets.to(device).long()
 
         cal_logit = torch.exp(
             logits - (
