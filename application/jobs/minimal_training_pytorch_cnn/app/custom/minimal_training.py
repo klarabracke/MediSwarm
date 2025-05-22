@@ -25,10 +25,13 @@ class LogitCalibratedLoss(nn.Module):
         self.client_id = client_id
 
     def forward(self, logits, targets):
+        device = logits.device
+        label_counts = self.clients_label_counts[self.client_id].to(device)
+
         cal_logit = torch.exp(
             logits - (
                 self.tau
-                * torch.pow(self.clients_label_counts[self.client_id], -1 / 4)
+                * torch.pow(label_counts, -1 / 4)
                 .unsqueeze(0)
                 .expand(logits.shape[0], -1)
             )
@@ -90,18 +93,22 @@ def prepare_training(logger):
     accelerator = 'gpu'
     logger.info(f"Using {accelerator} for training")
 
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     data_module, ds_train = set_up_data_module(env_vars)
 
     train_targets = [ds_train[i]['target'] for i in range(len(ds_train))]
     num_classes = len(set(train_targets))
     counter = Counter(train_targets)
     label_counts_vec = [counter.get(i, 1e-8) for i in range(num_classes)]
-    clients_label_counts = [torch.tensor(label_counts_vec, dtype=torch.float32)]
+    clients_label_counts = [torch.tensor(label_counts_vec, dtype=torch.float32).to(device)]
+
     client_id = 0
     tau = 1.0
 
     loss_fn = LogitCalibratedLoss(tau, clients_label_counts, client_id)
     model = MiniCNNForTesting(loss=loss_fn)
+    model = model.to(device)
 
     to_monitor = "val/AUC_ROC"
     min_max = "max"
