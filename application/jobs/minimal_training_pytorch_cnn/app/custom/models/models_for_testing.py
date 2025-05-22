@@ -1,3 +1,4 @@
+import torch
 from models.base_model import BasicClassifier
 import torch.nn as nn
 
