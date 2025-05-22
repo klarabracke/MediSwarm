@@ -12,7 +12,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 from data.datamodules import DataModule
 from data.datasets import MiniDatasetForTesting
-from models_for_testing import MiniCNNForTesting
+from models.models_for_testing import MiniCNNForTesting
 
 from collections import Counter
 
