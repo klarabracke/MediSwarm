@@ -14,7 +14,7 @@ import logging
 
 
 def get_num_epochs_per_round(site_name: str) -> int:
-    #TODO: Set max_epochs based on the data set size
+    # TODO: Set max_epochs based on the data set size
     NUM_EPOCHS_FOR_SITE = {
         "TUD_1": 2,
         "TUD_2": 4,
@@ -106,9 +106,8 @@ def prepare_training(logger, max_epochs:int , site_name: str):
         model_name = env_vars['model_name']
         model = select_model(model_name)
 
-    
-        model.client_id = 0  
-    
+        model.client_id = 0  # Set client_id to 0
+
         logger.info(f"Using model: {model_name}")
 
         to_monitor = "val/AUC_ROC"

@@ -2,7 +2,6 @@ from models.base_model import BasicClassifier
 import monai.networks.nets as nets
 import torch
 
-
 class ResNet(BasicClassifier):
     """
     ResNet model for classification tasks that uses BasicClassifier's calibrated loss.
@@ -39,7 +38,7 @@ class ResNet(BasicClassifier):
         aucroc_kwargs: dict = {"task": "binary"},
         acc_kwargs: dict = {"task": "binary"}
     ):
-        
+
         super().__init__(
             optimizer=optimizer,
             optimizer_kwargs=optimizer_kwargs,
@@ -53,7 +52,6 @@ class ResNet(BasicClassifier):
         self.out_ch = out_ch
         self.spatial_dims = spatial_dims
 
-        
         self.model = nets.ResNet(
             block=block,
             layers=layers,
@@ -72,4 +70,3 @@ class ResNet(BasicClassifier):
 
     def forward(self, x_in: torch.Tensor, **kwargs) -> torch.Tensor:
         return self.model(x_in)
-    

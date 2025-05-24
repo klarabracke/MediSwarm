@@ -182,6 +182,7 @@ class BasicModel(VeryBasicModel):
         else:
             return [optimizer]
 
+
 class BasicClassifier(BasicModel):
     """
     A basic classifier model with logit calibrated loss function and metrics.
